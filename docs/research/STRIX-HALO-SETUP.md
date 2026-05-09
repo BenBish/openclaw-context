@@ -14,7 +14,7 @@
 | 1 | **Bernie** | Polymarket / sports betting research specialist | `~/.openclaw/` on this laptop |
 | 2 | **Freddy** | Expert Advisor (trading) | `~/.openclaw/` on another laptop |
 | 3 | **Archie** | Coding expert | `~/.openclaw-archie/` on another laptop |
-| 4 | **Helen** | Personal assistant (new) | Fresh workspace on Strix Halo |
+| 4 | **Tom** | Executive assistant (for Helen) | Fresh workspace on Strix Halo |
 
 All agents run on local Llama.cpp models — no cloud API keys needed.
 
@@ -93,10 +93,10 @@ rsync -avz ~/.openclaw/agents/freddy/ ben@<strix-halo-ip>:~/.openclaw/agents/fre
 rsync -avz ~/.openclaw-archie/agents/archie/ ben@<strix-halo-ip>:~/.openclaw/agents/archie/
 ```
 
-### 3d. Helen (new, on Strix Halo)
+### 3d. Tom (new, on Strix Halo)
 Create fresh workspace:
 ```bash
-mkdir -p ~/.openclaw/agents/helen/workspace
+mkdir -p ~/.openclaw/agents/tom/workspace
 ```
 
 ---
@@ -125,9 +125,9 @@ mkdir -p ~/.openclaw/agents/helen/workspace
         "agentDir": "~/.openclaw/agents/archie"
       },
       {
-        "id": "helen",
-        "name": "Helen",
-        "agentDir": "~/.openclaw/agents/helen"
+        "id": "tom",
+        "name": "Tom",
+        "agentDir": "~/.openclaw/agents/tom"
       }
     ],
     "defaults": {
@@ -172,11 +172,11 @@ Each agent directory `~/.openclaw/agents/<id>/workspace/` should contain:
 - `USER.md` — Information about the user (you)
 - `IDENTITY.md` — Agent's own identity and name
 
-**Helen's workspace** should be initialized with her identity as a personal assistant:
-- `SOUL.md` — Warm, helpful, proactive personal assistant
-- `USER.md` — Your preferences, habits, schedule, pet names, etc.
-- `AGENTS.md` — What Helen can do (reminders, research, planning, etc.)
-- `IDENTITY.md` — "I am Helen, [your name]'s personal assistant..."
+**Tom's workspace** should be initialized with his identity as Helen's executive assistant:
+- `SOUL.md` — Warm, efficient, proactive executive assistant
+- `USER.md` — Helen's preferences, habits, schedule, pet names, etc.
+- `AGENTS.md` — What Tom can do (scheduling, research, planning, correspondence, etc.)
+- `IDENTITY.md` — "I am Tom, Helen's executive assistant..."
 
 ---
 
@@ -221,8 +221,8 @@ Each agent directory `~/.openclaw/agents/<id>/workspace/` should contain:
 │   ├── archie/
 │   │   ├── workspace/
 │   │   └── state/
-│   └── helen/
-│       └── workspace/
+│   └── tom/
+ │       └── workspace/
 │           ├── AGENTS.md
 │           ├── SOUL.md
 │           ├── USER.md
