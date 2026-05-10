@@ -1,240 +1,208 @@
-# Openclaw Multi-Agent Setup — Strix Halo Box
+# OpenClaw Multi-Agent Setup - Strix Halo Box
 
-**Target**: Fedora Strix Halo box (128GB RAM, AMD GPU)
-**Laptop**: Omarchy (dev machine)
-**Llama.cpp**: Running via ROCm Toolboxes, serving both models locally
-**Channel**: Telegram (new bot to be created)
+**Target**: Fedora Strix Halo box, 128GB RAM, AMD GPU  
+**Runtime**: OpenClaw 2026.5.7, gateway managed by user systemd  
+**Model backend**: local llama.cpp / llama-swap at `http://localhost:8080/v1`  
+**Current state**: Tom is implemented; Bernie, Freddy, and Archie are future migrations.
 
----
+## Current Agents
 
-## Agents
+| Name | Status | Role | Workspace | Agent state |
+|---|---|---|---|---|
+| `main` | Active scaffold/default | Neutral OpenClaw default agent | `~/.openclaw/workspace` | `~/.openclaw/agents/main/agent` |
+| `tom` | Implemented | Helen's executive assistant | `~/.openclaw/workspace-tom` | `~/.openclaw/agents/tom/agent` |
+| `bernie` | Future | Polymarket / sports betting research | TBD | TBD |
+| `freddy` | Future | Expert Advisor / trading | TBD | TBD |
+| `archie` | Future | Coding expert | TBD | TBD |
 
-| # | Name | Role | Source |
-|---|------|------|--------|
-| 1 | **Bernie** | Polymarket / sports betting research specialist | `~/.openclaw/` on this laptop |
-| 2 | **Freddy** | Expert Advisor (trading) | `~/.openclaw/` on another laptop |
-| 3 | **Archie** | Coding expert | `~/.openclaw-archie/` on another laptop |
-| 4 | **Tom** | Executive assistant (for Helen) | Fresh workspace on Strix Halo |
+`main` intentionally remains the default scaffold agent. Tom is reached by explicit Telegram routing or by using a full TUI session key.
 
-All agents run on local Llama.cpp models — no cloud API keys needed.
+## What Was Done
 
----
+Tom was created with OpenClaw's scaffolding commands instead of writing the config from scratch:
 
-## Step 1 — Create Telegram Bot
-
-1. Open Telegram, message `@BotFather`
-2. `/newbot` → name it, set a username (e.g., `openclaw_assistant_bot`)
-3. Copy the **Bot Token** (format: `000000000:AAAXXXXXXXXXXXXXXXXXXXXXXXXXX`)
-4. Store the token in `~/.openclaw/auth/telegram.json` or equivalent — **do not commit to git**
-
----
-
-## Step 2 — Set Up Llama.cpp Server (Persistent)
-
-The Strix Halo box already has Llama.cpp/ROCm running. Configure it as a persistent systemd service:
-
-```ini
-# /etc/systemd/system/openclaw-llama.service
-[Unit]
-Description=Openclaw Llama.cpp Server
-After=network.target
-
-[Service]
-Type=simple
-User=ben
-ExecStart=/path/to/llama-server \
-  --model /path/to/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf \
-  --host 0.0.0.0 \
-  --port 8080 \
-  --ctx-size 8192 \
-  --n-gpu-layers 99 \
-  --embedding \
-  --chat-template qwen2.5
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start:
 ```bash
-sudo systemctl enable --now openclaw-llama.service
+openclaw setup
+openclaw agents add tom \
+  --workspace ~/.openclaw/workspace-tom \
+  --agent-dir ~/.openclaw/agents/tom/agent \
+  --bind telegram:tom \
+  --non-interactive
 ```
 
-Verify:
-```bash
-curl http://localhost:8080/v1/models
-```
+Then the generated config was edited only for local models, Telegram account settings, Tom's workspace identity files, and context/compaction tuning.
 
-**Model choice**: Qwen3.6-35B-3B-UD-Q4_K_XL.gguf as the default for all agents.
-Gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf available as an alternate if needed (lower VRAM usage).
+## Routing and Sessions
 
----
-
-## Step 3 — Migrate Agent State
-
-### 3a. Bernie (from laptop `~/.openclaw/`)
-```bash
-# On laptop (source):
-rsync -avz ~/.openclaw/agents/bernie/ ben@<strix-halo-ip>:~/.openclaw/agents/bernie/
-rsync -avz ~/.openclaw/workspace/ ben@<strix-halo-ip>:~/.openclaw/workspace/
-```
-
-### 3b. Freddy (from another laptop `~/.openclaw/`)
-```bash
-# On source laptop:
-rsync -avz ~/.openclaw/agents/freddy/ ben@<strix-halo-ip>:~/.openclaw/agents/freddy/
-```
-
-### 3c. Archie (from another laptop `~/.openclaw-archie/`)
-```bash
-# On source laptop:
-rsync -avz ~/.openclaw-archie/agents/archie/ ben@<strix-halo-ip>:~/.openclaw/agents/archie/
-```
-
-### 3d. Tom (new, on Strix Halo)
-Create fresh workspace:
-```bash
-mkdir -p ~/.openclaw/agents/tom/workspace
-```
-
----
-
-## Step 4 — Openclaw Configuration
-
-### `~/.openclaw/openclaw.json`
+Telegram account `tom` routes to agent `tom`:
 
 ```json5
 {
-  "agents": {
-    "list": [
-      {
-        "id": "bernie",
-        "name": "Bernie",
-        "agentDir": "~/.openclaw/agents/bernie"
-      },
-      {
-        "id": "freddy",
-        "name": "Freddy",
-        "agentDir": "~/.openclaw/agents/freddy"
-      },
-      {
-        "id": "archie",
-        "name": "Archie",
-        "agentDir": "~/.openclaw/agents/archie"
-      },
-      {
-        "id": "tom",
-        "name": "Tom",
-        "agentDir": "~/.openclaw/agents/tom"
-      }
-    ],
-    "defaults": {
-      "model": {
-        "provider": "openai",
-        "apiBase": "http://localhost:8080/v1",
-        "model": "Qwen3.6-35B-A3B-UD-Q4_K_XL"
-      },
-      "env": {
-        "OPENAI_API_KEY": "fake-key-for-local"
-      }
-    }
+  type: "route",
+  agentId: "tom",
+  match: {
+    channel: "telegram",
+    accountId: "tom",
   },
-  "bindings": [
-    {
-      "channel": "telegram",
-      "accountId": "openclaw-telegram",
-      "agentId": null,
-      "allowFrom": ["<your-telegram-user-id>"]
-    }
-  ],
-  "auth": {
-    "profiles": {
-      "telegram": {
-        "token": "000000000:AAAXXXXXXXXXXXXXXXXXXXXXXXXXX"
-      }
-    }
-  },
-  "sandboxing": {
-    "enabled": false
-  },
-  "skipBootstrap": false
 }
 ```
 
-### Per-Agent Workspace Files
+For TUI use, `--session` is a session key, not an agent flag. Use full keys when targeting a named agent:
 
-Each agent directory `~/.openclaw/agents/<id>/workspace/` should contain:
-
-- `AGENTS.md` — Agent instructions, capabilities, and behavioral guidelines
-- `SOUL.md` — Personality, tone, and identity
-- `USER.md` — Information about the user (you)
-- `IDENTITY.md` — Agent's own identity and name
-
-**Tom's workspace** should be initialized with his identity as Helen's executive assistant:
-- `SOUL.md` — Warm, efficient, proactive executive assistant
-- `USER.md` — Helen's preferences, habits, schedule, pet names, etc.
-- `AGENTS.md` — What Tom can do (scheduling, research, planning, correspondence, etc.)
-- `IDENTITY.md` — "I am Tom, Helen's executive assistant..."
-
----
-
-## Step 5 — Bootstrap & Verify
-
-1. **Start Openclaw** on the Strix Halo box:
-   ```bash
-   openclaw start
-   ```
-
-2. **Verify each agent** can respond:
-   - Send a test message to the Telegram bot
-   - Confirm the correct agent responds (routing via bindings)
-
-3. **Check memory/state** — ensure migrated agents retain their prior context
-
-4. **Monitor GPU usage** — watch ROCm/meminfo to ensure models load correctly:
-   ```bash
-   rocm-smi
-   ```
-
----
-
-## File Structure on Strix Halo
-
-```
-~/.openclaw/
-├── openclaw.json                    # Global config
-├── auth/
-│   └── telegram.json                # Telegram bot token (git-ignored)
-├── agents/
-│   ├── bernie/
-│   │   ├── workspace/
-│   │   │   ├── AGENTS.md
-│   │   │   ├── SOUL.md
-│   │   │   ├── USER.md
-│   │   │   └── IDENTITY.md
-│   │   └── state/                   # Prior context, memory, etc.
-│   ├── freddy/
-│   │   ├── workspace/
-│   │   └── state/
-│   ├── archie/
-│   │   ├── workspace/
-│   │   └── state/
-│   └── tom/
- │       └── workspace/
-│           ├── AGENTS.md
-│           ├── SOUL.md
-│           ├── USER.md
-│           └── IDENTITY.md
-└── workspace/                       # Default/shared workspace
+```bash
+openclaw tui --session agent:tom:tom
+openclaw tui --session agent:tom:main
 ```
 
----
+Plain `openclaw tui` opens the default `main` agent unless the default agent is changed.
 
-## Notes
+## Model Configuration
 
-- **Git hygiene**: `auth/telegram.json` and any files containing API keys should be in `.gitignore`
-- **Model swap**: If Qwen3.6-35B is too heavy, switch the llama-server `--model` to the Gemma-4-26B variant
-- **Per-agent model override**: Each agent can override the default model in its own config within `agentDir`
-- **Bootstrap**: First-run creates the 4 bootstrap files. They're removed after completion. If you want to customize them, either edit them after creation or set `skipBootstrap: false` and let them generate, then overwrite
+The active model provider is `local-llama`, backed by the local OpenAI-compatible llama.cpp endpoint:
+
+```json5
+models: {
+  mode: "merge",
+  providers: {
+    "local-llama": {
+      baseUrl: "http://localhost:8080/v1",
+      auth: "api-key",
+      api: "openai-completions",
+      timeoutSeconds: 300,
+      request: {
+        allowPrivateNetwork: true,
+      },
+      models: [
+        {
+          id: "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+          contextWindow: 131072,
+          contextTokens: 32768,
+          maxTokens: 4096,
+        },
+        {
+          id: "gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf",
+          contextWindow: 32768,
+          contextTokens: 32768,
+          maxTokens: 4096,
+        },
+      ],
+    },
+  },
+}
+```
+
+Agent defaults point at Qwen with Gemma as fallback:
+
+```json5
+agents: {
+  defaults: {
+    model: {
+      primary: "local-llama/Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf",
+      fallbacks: ["local-llama/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf"],
+      timeoutMs: 300000,
+    },
+  },
+}
+```
+
+Current model check:
+
+```bash
+openclaw models list
+```
+
+Expected context display:
+
+```text
+Qwen:  32k/128k default
+Gemma: 32k      fallback#1
+```
+
+## Context and Compaction
+
+The effective context budget is 32k even though Qwen's native window is 128k. This keeps Tom responsive while the deployment is being validated.
+
+```json5
+agents: {
+  defaults: {
+    compaction: {
+      reserveTokens: 8192,
+      keepRecentTokens: 12000,
+      reserveTokensFloor: 0,
+      notifyUser: true,
+    },
+  },
+}
+```
+
+`tokens ?/33k` in the TUI is acceptable. The `?` means OpenClaw does not yet have a fresh token count for that session; the `33k` reflects the configured effective context.
+
+## Tom Workspace
+
+Tom's workspace files live in `~/.openclaw/workspace-tom`:
+
+- `IDENTITY.md` - Tom, Helen's executive assistant
+- `SOUL.md` - warm, discreet, efficient, proactive
+- `USER.md` - Helen-specific context, initially sparse
+- `AGENTS.md` - scheduling, planning, correspondence drafting, research, reminders, and approval rules
+
+Tom should not claim access to calendar, email, accounts, or devices unless the relevant tool context proves it is configured.
+
+## Verification
+
+Use these commands after config changes:
+
+```bash
+openclaw config validate
+openclaw agents list --bindings
+openclaw models list
+openclaw channels status
+curl http://localhost:8080/v1/models
+```
+
+Useful session checks:
+
+```bash
+openclaw sessions --agent tom
+openclaw sessions --agent main
+```
+
+Telegram messages to Tom's bot should create or update sessions under:
+
+```text
+~/.openclaw/agents/tom/sessions/
+```
+
+## Future Agent Additions
+
+Add Bernie, Freddy, and Archie with the same pattern:
+
+```bash
+openclaw agents add <agent-id> \
+  --workspace ~/.openclaw/workspace-<agent-id> \
+  --agent-dir ~/.openclaw/agents/<agent-id>/agent \
+  --bind telegram:<agent-id> \
+  --non-interactive
+```
+
+Each named agent should get:
+
+- A separate workspace
+- A separate `agentDir`
+- A dedicated Telegram account/bot unless there is a deliberate routing reason
+- Explicit bindings
+- No inherited third-party CLI credentials unless intentionally configured
+
+Only enable broad subagent or agent-to-agent access after all agents are installed and tested.
+
+## Secret Hygiene
+
+Do not commit:
+
+- Telegram bot tokens
+- Gateway auth tokens
+- Google OAuth client secrets
+- Google refresh tokens
+- Per-agent external CLI credential stores
+
+The repo should contain placeholders and operational notes only.
