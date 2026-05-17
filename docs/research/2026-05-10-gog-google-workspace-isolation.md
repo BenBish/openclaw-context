@@ -1,8 +1,8 @@
 # gog Google Workspace Isolation
 
-**Date**: 2026-05-10  
-**Status**: Research / implementation plan  
-**Goal**: Give Tom controlled access to Helen's Google Workspace, starting with Calendar, without leaking those credentials to other OpenClaw agents.
+**Date**: 2026-05-10
+**Status**: Research / implementation notes
+**Goal**: Give trusted family agents access to clearly named Google Workspace accounts, starting with Tom reading Helen's Calendar and Freddy reading Ben's calendars.
 
 ## Current state
 
@@ -15,7 +15,7 @@ OpenClaw includes a bundled `gog` skill for Google Workspace:
 - Sheets
 - Docs
 
-On the Strix Halo box, the skill is present but needs setup, and `gog` is not currently installed.
+On the Strix Halo box, `gog` is installed at `~/.local/bin/gog`.
 
 ## Isolation problem
 
@@ -23,73 +23,128 @@ OpenClaw agent isolation covers agent workspaces, state directories, sessions, a
 
 `gog` is an external CLI. If it uses the default config directory for the `ben` Unix user, then all OpenClaw agents running as `ben` may be able to use the same Google OAuth credentials when they can execute `gog`.
 
-That is not acceptable for Helen's account. Tom should own Helen's Google Workspace access; Bernie, Freddy, and Archie should not inherit it.
+For the current family/trusted-agent setup, strict per-agent credential isolation is not required. Instead, use one shared `gog` setup and make the intended Google account explicit on every command with `--client` and `--account`.
 
-This is configuration isolation, not a hard security boundary by itself. If all agents can run arbitrary shell commands as the same Unix user, they can potentially read files owned by that user. Stronger isolation requires sandbox policy, separate OS users, containers, or narrower tool permissions.
+This is policy separation, not a hard security boundary. If all agents can run arbitrary shell commands as the same Unix user, they can potentially use any configured shared Google account. Stronger isolation would require per-agent config roots, sandbox policy, separate OS users, containers, or narrower tool permissions.
 
-## Recommended design
+## Current design
 
-Use a Tom-specific config root and a wrapper command.
+Use the normal `gog` config for Unix user `ben`, with file keyring for SSH/service compatibility:
+
+```bash
+gog auth keyring file
+```
+
+Shared config paths:
 
 ```text
-~/.openclaw/agents/tom/gog-config/
+~/.config/gogcli/config.json
+~/.config/gogcli/credentials-helen.json
+~/.config/gogcli/credentials-ben-personal.json
+~/.config/gogcli/credentials-ben-work.json
+~/.config/gogcli/keyring/
 ```
 
-Recommended permissions:
+Use named OAuth clients:
+
+- `--client helen` for Helen's Google account.
+- `--client ben-personal` for Ben's personal Google account.
+- `--client ben-work` for Ben's work Google account.
+
+Use explicit account flags:
 
 ```bash
-chmod 700 ~/.openclaw/agents/tom/gog-config
+--account <helen-google-account>
 ```
-
-Run `gog` for Tom with:
-
-```bash
-XDG_CONFIG_HOME="$HOME/.openclaw/agents/tom/gog-config" \
-GOG_ACCOUNT="<helen-google-account>" \
-gog ...
-```
-
-Do not configure this `XDG_CONFIG_HOME` for other agents.
 
 ## Wrapper command
 
-Create a small wrapper such as `tom-gog` on the Strix Halo box:
+Use `gog-agent` so OpenClaw can run `gog` non-interactively. The wrapper loads `GOG_KEYRING_PASSWORD` from a local secret file if the variable is not already set, then executes `gog`.
+
+Secret path:
+
+```text
+~/.openclaw/secrets/gog-keyring-password
+```
+
+Wrapper path:
+
+```text
+~/bin/gog-agent
+```
+
+Wrapper shape:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 
-export XDG_CONFIG_HOME="$HOME/.openclaw/agents/tom/gog-config"
-export GOG_ACCOUNT="<helen-google-account>"
+password_file="$HOME/.openclaw/secrets/gog-keyring-password"
+if [ -z "${GOG_KEYRING_PASSWORD:-}" ] && [ -r "$password_file" ]; then
+  IFS= read -r GOG_KEYRING_PASSWORD < "$password_file"
+  export GOG_KEYRING_PASSWORD
+fi
 
 exec gog "$@"
 ```
 
-Tom's instructions should use `tom-gog`, not raw `gog`, for Helen's Google Workspace.
+Do not commit this secret file.
 
 ## Initial scope
 
 Start with Google Calendar only.
 
-Setup flow:
+Setup flow for Helen:
 
 ```bash
-tom-gog auth credentials /path/to/client_secret.json
-tom-gog auth add <helen-google-account> --services calendar
-tom-gog auth list
+gog auth credentials set /path/to/client_secret.json --client helen
+gog auth add <helen-google-account> --client helen --services calendar --readonly
+gog-agent auth list --client helen
+```
+
+Setup flow for Freddy / Ben:
+
+```bash
+gog auth credentials set /path/to/client_secret.json --client ben-personal
+gog auth add bbish007@gmail.com --client ben-personal --services calendar --readonly
+gog-agent auth list --client ben-personal
+
+gog auth credentials set /path/to/client_secret.json --client ben-work
+gog auth add ben.b@covergenius.com --client ben-work --services calendar --readonly
+gog-agent auth list --client ben-work
+```
+
+Ben's personal Google account has more than one relevant calendar. Freddy's default calendar view must include:
+
+| Calendar | Query |
+|---|---|
+| Ben Bishop | `gog-agent --client ben-personal --account bbish007@gmail.com calendar events primary ...` |
+| Ben and Helen | `gog-agent --client ben-personal --account bbish007@gmail.com calendar events 'demud4un00nih20kass1tosvig@group.calendar.google.com' ...` |
+| Work | `gog-agent --client ben-work --account ben.b@covergenius.com calendar events primary ...` |
+
+List Ben's personal calendars:
+
+```bash
+gog-agent --client ben-personal --account bbish007@gmail.com calendar calendars --json --no-input
 ```
 
 Calendar read test:
 
 ```bash
-tom-gog calendar events primary \
+gog-agent --client helen --account <helen-google-account> calendar events primary \
   --from 2026-05-10T00:00:00-07:00 \
   --to 2026-05-17T00:00:00-07:00 \
   --json \
   --no-input
 ```
 
-Use read-only OAuth scopes if `gog` supports them cleanly. If `gog` grants broader Calendar access, enforce write restrictions through Tom's instructions and wrapper policy.
+Use read-only OAuth scopes where available. If broader scopes are added later, enforce write restrictions through agent instructions and approval policy.
+
+## Timezone caveat
+
+The shared `Ben and Helen` calendar can return event timestamps with a `+01:00` offset while the event timezone says `America/Los_Angeles`. Tom and Freddy now use the workspace-local `gog-calendar-timezones` skill wrapper for calendar event reads so results are normalized before user-facing summaries.
+
+For daily briefings that include shared calendars, prefer a slightly wider query window, normalize with the wrapper, and then filter/present the intended local day. This avoids missing events that appear on adjacent dates because of offset bugs.
 
 ## Approval policy
 
@@ -109,6 +164,8 @@ Tom must ask before:
 - Sending email or creating Gmail drafts.
 - Accessing Drive, Docs, Sheets, Contacts, or Gmail beyond the enabled service scope.
 
+Freddy follows the same policy for Ben's calendars. Freddy may read Ben's personal and work calendars, summarize schedules, identify conflicts, and find openings. Freddy must ask before calendar writes, RSVPs, invites, notifications, email actions, or access to services beyond the configured calendar scope.
+
 ## Future expansion
 
 Recommended order after Calendar works:
@@ -119,7 +176,7 @@ Recommended order after Calendar works:
 4. Drive and Docs read access.
 5. Calendar writes, only after approval behavior is reliable.
 
-Each expansion should use the same Tom-specific `XDG_CONFIG_HOME` and should be documented in Tom's workspace.
+Each expansion should use explicit `--client` and `--account` flags and should be documented in the relevant agent workspace.
 
 ## Verification
 
@@ -127,17 +184,26 @@ After setup:
 
 ```bash
 command -v gog
-tom-gog auth list
-tom-gog calendar events primary --from <iso> --to <iso> --json --no-input
+gog auth keyring
+gog auth credentials list --client helen
+gog-agent auth list --client helen
+gog-agent --client helen --account <helen-google-account> calendar events primary --from <iso> --to <iso> --json --no-input
+gog-agent auth list --client ben-personal
+gog-agent auth list --client ben-work
+gog-agent --client ben-personal --account bbish007@gmail.com calendar events primary --week --json --no-input
+gog-agent --client ben-personal --account bbish007@gmail.com calendar events 'demud4un00nih20kass1tosvig@group.calendar.google.com' --week --json --no-input
+gog-agent --client ben-work --account ben.b@covergenius.com calendar events primary --week --json --no-input
 openclaw skills list
 ```
 
 Expected:
 
 - `gog` is installed.
-- Tom's isolated config contains Helen's OAuth credentials.
-- Other agents are not configured to use Tom's `gog-config`.
-- Tom's workspace documents that Google actions are approval-gated.
+- Shared `gog` has a `helen` OAuth client.
+- Shared `gog` has `ben-personal` and `ben-work` OAuth clients once Freddy calendar setup is complete.
+- `gog-agent` can unlock the file keyring non-interactively.
+- Tom's workspace documents explicit `gog-agent --client helen --account ...` usage and approval rules.
+- Freddy's workspace documents explicit `gog-agent --client ben-personal` and `--client ben-work` usage, including both Ben Bishop and Ben and Helen personal calendars.
 
 ## Secret hygiene
 
@@ -146,6 +212,7 @@ Do not commit:
 - Google OAuth client secrets.
 - `gog` token files.
 - Refresh tokens.
+- `~/.openclaw/secrets/gog-keyring-password`.
 - Helen's actual account address if this repository may be shared.
 
-Use placeholders in docs and keep real credentials under the Tom-specific config root on the Strix Halo box.
+Use placeholders in public docs and keep real credentials on the Strix Halo box only.

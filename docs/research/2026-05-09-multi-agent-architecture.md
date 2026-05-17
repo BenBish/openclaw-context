@@ -85,10 +85,22 @@ OpenClaw isolates workspaces, agent state, and session stores, but that does not
 
 For sensitive integrations, use per-agent config roots and wrapper commands. Example policy:
 
-- Tom owns Helen's Google Workspace credentials.
-- `gog` runs with Tom-specific `XDG_CONFIG_HOME`.
-- Bernie, Freddy, and Archie do not get Tom's `gog` config directory.
-- Other agents request calendar information from Tom through summaries or subagent results instead of reading Helen's account directly.
+- Tom uses the workspace-local `gog-calendar-timezones` wrapper with explicit `--client helen --account ...` flags for Helen's calendar event reads.
+- Freddy uses explicit `gog-agent --client ben-personal` and `--client ben-work` commands for Ben's calendars.
+- Freddy's default calendar view is not just one personal calendar: it includes Ben Bishop, Ben and Helen, and work.
+- Bernie and Archie should not get calendar instructions unless intentionally configured later.
+- This shared `gog-agent` setup is policy separation, not a hard security boundary; stronger isolation would require per-agent config roots, separate OS users, containers, or narrower tool permissions.
+
+## Runtime lessons from Tom and Freddy
+
+- Keep `main` as a neutral scaffold/default agent; route named Telegram bots to named agents with account-specific routes.
+- `openclaw tui --session <name>` selects a session name, not an agent. Use a full key such as `agent:tom:tom` or rely on Telegram routing.
+- New Qwen sessions should show an effective OpenClaw context around 64k. Older sessions can retain their previous 32k budget.
+- Session reset/new-session is the clean way to make Telegram conversations reload updated workspace instructions.
+- External calendar timezones need deterministic normalization. The shared `Ben and Helen` calendar can return `+01:00` timestamps while declaring `America/Los_Angeles`; both Tom and Freddy now use the workspace-local `gog-calendar-timezones` wrapper for event reads before presentation.
+- Calendar event pagination matters for busy days. `gog-agent calendar events` defaults to 10 results, so briefing and schedule-summary queries should include `--all-pages`.
+- All-pages calendar responses can be too verbose for cron agents. Cron-delivered daily briefings should compact normalized event JSON before the model sees it.
+- For complex cron payload creation, prefer `openclaw cron add/edit` from the CLI. Qwen repeatedly produced malformed nested cron tool JSON even in a fresh 64k session.
 
 ---
 
