@@ -12,6 +12,7 @@ Model runbooks:
 
 - [GPT-OSS 120B on Strix Halo](docs/research/2026-05-17-gpt-oss-120b-strix-halo.md)
 - [Local llama-server model configurations](docs/research/2026-05-17-local-llama-model-configs.md)
+- [Remote OpenClaw Control UI access](docs/research/2026-05-18-openclaw-remote-control-ui.md)
 
 Agent runbooks:
 

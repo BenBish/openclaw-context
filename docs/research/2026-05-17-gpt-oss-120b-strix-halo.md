@@ -201,3 +201,45 @@ main: model loaded
 main: server is listening on http://0.0.0.0:12346
 main: starting the main loop...
 ```
+
+## Operational Assessment After Cutover
+
+Log review on 2026-05-17 showed the GPT-OSS Q4 backend itself was healthy:
+
+- `llama-server` was listening on `0.0.0.0:12346`.
+- `llama-swap` was listening on `:8080`.
+- Recent llama-swap `/v1/chat/completions` calls returned HTTP `200`.
+- Today’s GPT-OSS OpenClaw trajectories ended with `success`, with no prompt or idle timeouts.
+- The llama.cpp log showed successful requests and no response truncation in the reviewed tail.
+
+Issues and follow-ups found during the review:
+
+- Resolved: The Weekend Briefing cron payload had hard-coded `--target-date 2026-05-16` and `Weekend Briefing - Sat, May 16, 2026`. This was a cron prompt/config issue, not a llama-server issue. The payload was updated to use a dynamic date and title format.
+- Resolved: The Health, Birthdays & Anniversaries cron job had a manual run time out after about 305 seconds near the model cutover. It was re-run successfully after the GPT-OSS setup stabilized.
+- GPT-OSS is substantially slower than the earlier Qwen/Gemma setup. Normal cron jobs were observed around 140-160 seconds, with some interactive requests exceeding one minute. If heavier jobs continue to approach 300 seconds, raise cron `timeoutSeconds` or reduce concurrency.
+- OpenClaw logged liveness and stalled-session warnings while multiple model calls were active. The reviewed sessions still completed successfully, so this is a monitoring/tuning concern rather than an immediate failure.
+- Tool-use traces showed recoverable mistakes such as invalid `dir_list` nodes, exact-text edit misses, and out-of-range file reads. For important config changes, keep using deterministic edits plus manual verification.
+
+## Candidate Model Follow-Up
+
+Follow-up testing compared the current Q4 setup against GPT-OSS 120B `UD-Q6_K_XL` and GLM-4.7-Flash `UD-Q8_K_XL`.
+
+Short exact-output benchmark:
+
+| Model | Wall time | Generation | Result |
+| --- | ---: | ---: | --- |
+| GPT-OSS 120B `UD-Q4_K_XL` | 11.0s | 24.6 tok/s | Valid JSON |
+| GPT-OSS 120B `UD-Q6_K_XL` | 10.2s | 23.8 tok/s | Valid JSON |
+| GLM-4.7-Flash `UD-Q8_K_XL` | 2.4-2.6s | 29.5 tok/s | Needed stricter prompt to avoid Markdown fences |
+
+OpenClaw-specific command prompt:
+
+- GLM was fast but combined two requested commands with `&&` and used system-level `systemctl` instead of `systemctl --user`.
+- GPT-OSS Q6 used `systemctl --user` correctly but invented `openclaw validate` instead of using a real JSON validation command.
+
+Recommendation after this pass:
+
+- Keep GPT-OSS 120B `UD-Q4_K_XL` as the active OpenClaw model.
+- Do not switch to GPT-OSS Q6 yet; it did not show a meaningful speed or tool-use quality improvement over Q4.
+- Keep GLM-4.7-Flash Q8 as a promising fast candidate, but only test it further with OpenClaw agent prompts that explicitly forbid Markdown fences and clarify user-service commands.
+- Continue treating config edits as deterministic/manual-review work regardless of model choice.

@@ -99,6 +99,91 @@ Notes:
 - Keep context at `131072` for OpenClaw.
 - Leave KV cache at default f16 unless memory pressure requires re-testing q8 KV.
 
+## GPT-OSS 120B UD-Q6_K_XL
+
+Status: tested, not selected as the active OpenClaw model.
+
+Model path:
+
+```text
+/home/ben/AI/models/gpt-oss/UD-Q6_K_XL/gpt-oss-120b-UD-Q6_K_XL-00001-of-00002.gguf
+```
+
+Command tested:
+
+```bash
+podman exec -d \
+  -w /home/ben \
+  -e HSA_OVERRIDE_GFX_VERSION=11.5.1 \
+  llama-rocm-7.2.2 \
+  sh -lc 'exec llama-server \
+    -m /home/ben/AI/models/gpt-oss/UD-Q6_K_XL/gpt-oss-120b-UD-Q6_K_XL-00001-of-00002.gguf \
+    -ngl 99 \
+    --n-cpu-moe 35 \
+    -fa 1 \
+    -c 131072 \
+    -b 2048 \
+    -ub 2048 \
+    --no-warmup \
+    --jinja \
+    --temp 1.0 \
+    --top-p 1.0 \
+    --top-k 0 \
+    --min-p 0.0 \
+    --host 0.0.0.0 \
+    --port 12347 \
+    > /tmp/gpt-oss-120b-q6-solo-12347.log 2>&1'
+```
+
+Notes:
+
+- Starts successfully with the same `--n-cpu-moe 35` and `--no-warmup` strategy as Q4.
+- Uses about 61 GiB RSS in the observed solo run.
+- Short benchmark was similar to Q4, not clearly better.
+- Did not improve enough on OpenClaw command/tool behavior to justify replacing Q4.
+
+## GLM-4.7-Flash UD-Q8_K_XL
+
+Status: tested as a fast alternate, not selected as the active OpenClaw model.
+
+Model path:
+
+```text
+/home/ben/AI/models/GLM-4.7-Flash-GGUF/GLM-4.7-Flash-UD-Q8_K_XL.gguf
+```
+
+Command tested:
+
+```bash
+podman exec -d \
+  -w /home/ben \
+  -e HSA_OVERRIDE_GFX_VERSION=11.5.1 \
+  llama-rocm-7.2.2 \
+  sh -lc 'exec llama-server \
+    -m /home/ben/AI/models/GLM-4.7-Flash-GGUF/GLM-4.7-Flash-UD-Q8_K_XL.gguf \
+    -ngl 99 \
+    -fa 1 \
+    -c 131072 \
+    -b 2048 \
+    -ub 2048 \
+    --no-warmup \
+    --jinja \
+    --reasoning off \
+    --temp 0.6 \
+    --top-p 0.95 \
+    --host 0.0.0.0 \
+    --port 12347 \
+    > /tmp/glm-4.7-flash-q8-12347.log 2>&1'
+```
+
+Notes:
+
+- Starts successfully with 131k context.
+- Mostly offloads to VRAM; observed process RSS was about 2 GiB, with about 33 GiB ROCm model buffer and about 6.8 GiB KV buffer.
+- Much faster than GPT-OSS on short exact-output prompts.
+- Needs stricter system prompting to avoid Markdown fences.
+- In an OpenClaw-specific command prompt, it used system-level `systemctl` instead of `systemctl --user`, so it needs more agent-prompt validation before being considered as the main model.
+
 ## GPT-OSS 120B F16
 
 Status: downloaded and tested, but did not successfully finish startup with the initial command.
