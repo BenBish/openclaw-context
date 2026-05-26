@@ -46,7 +46,7 @@ OpenClaw model config lives at:
 
 ## GPT-OSS 120B UD-Q4_K_XL
 
-Status: current working OpenClaw model.
+Status: previous OpenClaw model, replaced by Qwen3.6 27B plus Gemma fallback on 2026-05-22 because it did not deliver the expected performance gains.
 
 Model path:
 
@@ -300,9 +300,60 @@ Notes:
 - Used with 131k context.
 - Eventually superseded by Qwen3-Coder and then GPT-OSS.
 
+## Qwen3.6 27B
+
+Status: current OpenClaw primary model.
+
+Model path:
+
+```text
+/home/ben/AI/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-UD-Q4_K_XL.gguf
+```
+
+Command:
+
+```bash
+podman exec -d \
+  -w /home/ben \
+  -e HSA_OVERRIDE_GFX_VERSION=11.5.1 \
+  llama-rocm-7.2.2 \
+  sh -lc 'exec llama-server \
+    -m /home/ben/AI/models/Qwen3.6-27B-GGUF/Qwen3.6-27B-UD-Q4_K_XL.gguf \
+    -ngl 99 \
+    -fa 1 \
+    -c 131072 \
+    -b 2048 \
+    -ub 2048 \
+    --no-warmup \
+    --jinja \
+    --reasoning off \
+    --temp 0.6 \
+    --top-p 0.95 \
+    --host 0.0.0.0 \
+    --port 12346 \
+    > /tmp/qwen3.6-27b-12346.log 2>&1'
+```
+
+llama-swap model ID:
+
+```text
+Qwen3.6-27B-UD-Q4_K_XL.gguf
+```
+
+OpenClaw model ID:
+
+```text
+local-llama/Qwen3.6-27B-UD-Q4_K_XL.gguf
+```
+
+Notes:
+
+- Runs as the primary local model on port `12346`.
+- Uses 131k context for OpenClaw compatibility.
+
 ## Gemma 4 26B A4B
 
-Status: previous secondary/fallback model.
+Status: current OpenClaw fallback model.
 
 Model path:
 
@@ -313,14 +364,21 @@ Model path:
 Command:
 
 ```bash
-llama-server \
-  -m AI/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
-  --jinja \
-  -fa 1 \
-  -ngl 99 \
-  -c 32768 \
-  --port 12345 \
-  --host 0.0.0.0
+podman exec -d \
+  -w /home/ben \
+  -e HSA_OVERRIDE_GFX_VERSION=11.5.1 \
+  llama-rocm-7.2.2 \
+  sh -lc 'exec llama-server \
+    -m /home/ben/AI/models/gemma-4-26B-A4B/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf \
+    -ngl 99 \
+    -fa 1 \
+    -c 32768 \
+    --no-warmup \
+    --jinja \
+    --reasoning off \
+    --host 0.0.0.0 \
+    --port 12345 \
+    > /tmp/gemma-4-26b-a4b-12345.log 2>&1'
 ```
 
 llama-swap model ID:
@@ -337,8 +395,8 @@ local-llama/gemma-4-26B-A4B-it-UD-Q4_K_XL.gguf
 
 Notes:
 
-- Worked as a 32k context fallback/acting model.
-- Removed when OpenClaw moved to a single GPT-OSS 120B upstream.
+- Runs as the fallback local model on port `12345`.
+- Uses 32k context.
 
 ## Standard Verification
 
@@ -346,6 +404,7 @@ Health:
 
 ```bash
 curl http://127.0.0.1:12346/health
+curl http://127.0.0.1:12345/health
 ```
 
 llama-swap models:

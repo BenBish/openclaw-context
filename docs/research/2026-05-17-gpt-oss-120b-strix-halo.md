@@ -39,7 +39,7 @@ podman exec -d \
   sh -lc 'exec llama-server \
     -m /home/ben/AI/models/gpt-oss/UD-Q4_K_XL/gpt-oss-120b-UD-Q4_K_XL-00001-of-00002.gguf \
     -ngl 99 \
-    --n-cpu-moe 35 \
+    --n-cpu-moe 10 \
     -fa 1 \
     -c 131072 \
     -b 2048 \
@@ -124,12 +124,13 @@ main: server is listening on http://0.0.0.0:12346
 
 ## Key Learnings
 
-- GPT-OSS 120B needs MoE-specific placement. `--n-cpu-moe 35` was the critical flag that made the 131k context run start successfully.
+- GPT-OSS 120B needs MoE-specific placement. `--n-cpu-moe 35` was the critical flag that made the 131k context run start successfully. Benchmarking on 2026-05-18 showed `--n-cpu-moe 10` is +67–82% faster and stable; 10 is now the production setting.
 - `--no-warmup` avoids the startup path that appeared to hang during the large full-context warmup.
 - Start without KV quantization flags. The working run uses default f16 KV. Reintroduce `--cache-type-k q8_0 --cache-type-v q8_0` only after the baseline remains stable.
 - Use `-ngl 99`, not `-ngl 999`, for this setup. The working run still reports `37/37` layers offloaded, while MoE tensors are kept on CPU.
 - The Q4 split GGUF is loaded by passing the first shard path. Do not concatenate the shard files manually.
 - GPT-OSS may spend tokens in `reasoning_content`; very small `max_tokens` can return no final `content`. Smoke tests should allow enough output tokens.
+- The Strix Halo iGPU reports ~127 GiB total VRAM (the full unified memory pool). `--n-cpu-moe 0` failed during the benchmark sweep but that may have been a transient resource issue after repeated restarts rather than a hard VRAM limit. Retry `--n-cpu-moe 0` from a cold start if lower CPU load is desired.
 
 ## llama-swap Config
 
@@ -216,6 +217,8 @@ Issues and follow-ups found during the review:
 
 - Resolved: The Weekend Briefing cron payload had hard-coded `--target-date 2026-05-16` and `Weekend Briefing - Sat, May 16, 2026`. This was a cron prompt/config issue, not a llama-server issue. The payload was updated to use a dynamic date and title format.
 - Resolved: The Health, Birthdays & Anniversaries cron job had a manual run time out after about 305 seconds near the model cutover. It was re-run successfully after the GPT-OSS setup stabilized.
+- Resolved: The TLDR Tech & AI Briefing cron repeatedly timed out at 120 seconds after the active model moved to GPT-OSS 120B. The fix was to narrow the prompt to two rendered TLDR pages, forbid search/API guessing/raw HTML scraping, allow only one AI fallback date, and raise `timeoutSeconds` to `240`. The patched manual run completed in about 112 seconds and delivered successfully.
+- Follow-up: Cron validation later showed several jobs had recent p95 runtimes at or above their 300-second timeout. Freddy Daily, Tom Daily, Health/Birthdays, and Weekend were raised to `420` seconds. Weekend was also rewritten to use deterministic weather/calendar/NYT sources and partial output on source failure. A manual Weekend smoke run completed successfully in about 190 seconds and delivered to Telegram.
 - GPT-OSS is substantially slower than the earlier Qwen/Gemma setup. Normal cron jobs were observed around 140-160 seconds, with some interactive requests exceeding one minute. If heavier jobs continue to approach 300 seconds, raise cron `timeoutSeconds` or reduce concurrency.
 - OpenClaw logged liveness and stalled-session warnings while multiple model calls were active. The reviewed sessions still completed successfully, so this is a monitoring/tuning concern rather than an immediate failure.
 - Tool-use traces showed recoverable mistakes such as invalid `dir_list` nodes, exact-text edit misses, and out-of-range file reads. For important config changes, keep using deterministic edits plus manual verification.

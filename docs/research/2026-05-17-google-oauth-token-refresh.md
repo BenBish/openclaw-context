@@ -18,7 +18,7 @@ Freddy's calendar access depends on stored Google refresh tokens for those named
 
 ## Likely cause
 
-The weekly failure pattern strongly suggests that the Google OAuth app backing these clients is still in **Testing** publishing status.
+The weekly failure pattern strongly suggested that the Google OAuth app backing these clients was still in **Testing** publishing status.
 
 Google's OAuth policy says refresh tokens for an external app in Testing expire after 7 days when sensitive or restricted scopes are requested. Google Calendar scopes are sensitive scopes, so a weekly refresh-token expiry matches this behavior.
 
@@ -26,7 +26,13 @@ Once the OAuth app is moved to **In production**, refresh tokens should no longe
 
 Refresh tokens can still be invalidated for other reasons, including user revocation, long inactivity, token count limits, password/admin-policy changes, or Workspace session-control policies.
 
-## Fix to do this week
+## Current status
+
+As of 2026-05-26, the Google OAuth app has been changed from **Testing** to **In production** in Google Auth Platform.
+
+The affected `gog` accounts were also re-consented with `--force-consent`, so new refresh tokens should now be stored for `ben-personal` and `ben-work`.
+
+## Production publishing steps
 
 In Google Cloud Console / Google Auth Platform:
 

@@ -92,6 +92,15 @@ The Daily Morning Briefing cron payload includes `--all-pages` on all three cale
 
 The Tomorrow's Daily Briefing cron payload additionally pipes normalized calendar JSON through `calendar-daily-briefing/scripts/compact-events.py` before summarization. This prevents all-pages Google Calendar responses from flooding the model with attendees, descriptions, Meet data, attachments, links, and recurrence metadata.
 
+The TLDR Tech & AI Briefing cron was hardened on 2026-05-18 after repeated 120-second timeouts under GPT-OSS 120B. The payload now uses a deterministic prompt that fetches only `https://tldr.tech/tech/<YYYY-MM-DD>` and `https://tldr.tech/ai/<YYYY-MM-DD>`, forbids web search/API guessing/raw HTML scraping, excludes ads/sponsors/Quick Links, and allows one previous-weekday AI fallback if today's AI issue is not published. Its `timeoutSeconds` is now `240`. A manual verification run completed successfully in about 112 seconds and delivered to Telegram.
+
+Cron robustness changes on 2026-05-18:
+
+- Freddy Daily Briefing, Tom Daily Briefing, Health/Birthdays, and Weekend Briefing now use `timeoutSeconds: 420` to give GPT-OSS 120B enough margin over recent p95 runtimes.
+- Health/Birthdays, Tomorrow's Daily Briefing, and Weekend Briefing now have failure alerts to `telegram:8240038003` through Freddy.
+- Health/Birthdays now uses `--all-pages` on all three calendar queries.
+- Weekend Briefing now has a deterministic prompt: compacted calendar JSON only, `wttr.in` JSON weather, one NYT Technology page, at most three NYT headlines, one retry max, and partial output on source failure. Manual weekday validation targets the upcoming Saturday for schedule/title while scheduled weekend runs use the current day.
+
 Manual creation pattern:
 
 ```bash
@@ -125,6 +134,8 @@ delivery": {
 OpenClaw correctly rejected those calls with `INVALID_REQUEST`. This was a model/tool-call formatting failure, not a Telegram permission issue, cron backend issue, or session context size issue.
 
 Practical rule: for complex cron jobs with nested payloads, use `openclaw cron add/edit` manually and let Freddy run the resulting job.
+
+If `openclaw cron edit` fails with gateway WebSocket errors, verify with `openclaw cron list` and gateway logs before retrying. On 2026-05-18, the CLI path intermittently reported `1006 abnormal closure`; the safe fallback was to back up `~/.openclaw/cron/jobs.json`, patch only the target job, then verify via `jq`, `openclaw cron run`, and `openclaw cron runs`.
 
 ## Context and Sessions
 
